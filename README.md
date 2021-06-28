@@ -4,9 +4,7 @@ The TNO MPC lab consists of generic software components, procedures, and functio
 
 The package tno.mpc.protocols.kaplan_meier is part of the TNO Python Toolbox.
 
-This protocol securely computes the log-rank statistics associated with the Kaplan-Meier estimator on vertically partitioned data. It is inspired by the work done in the [CONVINCED](https://www.tno.nl/en/tno-insights/articles/privacy-friendly-data-technology-expands-oncology-research-opportunities/) project.
-
-The MPC protocol was been developed within the CONVINCED project, a research collaboration between TNO and IKNL, and the project SELECTED. These projects were partly funded by TNOs Appl.AI and the Netherlands AI Coalition. In the future, this will be integrated in IKNLs open source [Vantage6](https://vantage6.ai) infrastructure.
+This MPC protocol securely computes the log-rank statistics associated with the Kaplan-Meier estimator on vertically partitioned data. It has been developed within the [CONVINCED](https://www.tno.nl/en/tno-insights/articles/privacy-friendly-data-technology-expands-oncology-research-opportunities/) project, a research collaboration between TNO and IKNL, and the project SELECTED. These projects were partly funded by TNOs Appl.AI and the Netherlands AI Coalition. In the future, this will be integrated in IKNLs open source [Vantage6](https://vantage6.ai) infrastructure.
 
 *Limitations in (end-)use: the content of this software package may solely be used for applications that comply with international export control laws.*
 
