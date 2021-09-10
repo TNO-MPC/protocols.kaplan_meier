@@ -14,6 +14,7 @@ from lifelines.statistics import StatisticalResult
 from mpyc.runtime import Party, mpc
 from mpyc.sectypes import SecureFixedPoint
 from scipy.stats import chi2
+
 from tno.mpc.encryption_schemes.utils import FixedPoint
 from tno.mpc.mpyc.matrix_inverse import matrix_inverse
 

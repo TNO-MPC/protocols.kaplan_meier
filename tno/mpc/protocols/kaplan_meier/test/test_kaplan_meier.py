@@ -8,12 +8,12 @@ from typing import Tuple, cast
 import numpy as np
 import pandas as pd
 import pytest
+
 from tno.mpc.communication import Pool
 from tno.mpc.communication.test import (  # pylint: disable=unused-import
     fixture_pool_http_2p,
 )
 from tno.mpc.encryption_schemes.utils.fixed_point import FixedPoint
-
 from tno.mpc.protocols.kaplan_meier import Alice, Bob
 from tno.mpc.protocols.kaplan_meier.player import Player
 

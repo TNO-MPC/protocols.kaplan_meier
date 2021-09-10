@@ -11,6 +11,7 @@ This MPC protocol securely computes the log-rank statistics associated with the 
 ## Documentation
 
 Documentation of the tno.mpc.protocols.kaplan_meier package can be found [here](https://docs.mpc.tno.nl/protocols/kaplan_meier/0.1.1).
+In [ERCIM News 126 (July 2021)](https://ercim-news.ercim.eu/en126/special/oncological-research-on-distributed-patient-data-privacy-can-be-preserved), we presented some extra context.
 
 ## Install
 
