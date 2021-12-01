@@ -18,6 +18,6 @@ contact:
 repository-code: https://github.com/TNO-MPC/protocols.kaplan_meier
 repository-artifact: https://pypi.org/project/tno.mpc.protocols.kaplan_meier
 title: TNO MPC Lab - Protocols - Kaplan-Meier
-version: v0.1.3
-date-released: 2021-09-10
+version: v0.2.0
+date-released: 2021-12-01
 

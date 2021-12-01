@@ -3,19 +3,33 @@ Tests that can be ran using pytest to test the kaplan-meier functionality
 """
 
 import asyncio
-from typing import Tuple, cast
+from typing import AsyncGenerator, Tuple
 
 import numpy as np
 import pandas as pd
 import pytest
 
 from tno.mpc.communication import Pool
-from tno.mpc.communication.test import (  # pylint: disable=unused-import
-    fixture_pool_http_2p,
+from tno.mpc.communication.test.pool_fixtures_http import (
+    finish,
+    generate_http_test_pools,
 )
 from tno.mpc.encryption_schemes.utils.fixed_point import FixedPoint
 from tno.mpc.protocols.kaplan_meier import Alice, Bob
 from tno.mpc.protocols.kaplan_meier.player import Player
+
+
+@pytest.fixture(name="pool_http_2p", scope="function")
+@pytest.mark.asyncio
+async def fixture_pool_http_2p() -> AsyncGenerator[Tuple[Pool, ...], None]:
+    """
+    Creates a collection of 2 communication pools
+
+    :return: a collection of communication pools
+    """
+    pools = generate_http_test_pools(2)
+    yield await pools.asend(None)
+    await finish(pools)
 
 
 @pytest.fixture(name="alice")
@@ -129,7 +143,7 @@ async def test_protocol_paillier(alice: Alice, bob: Bob) -> None:
             [1, 1, 1, 1],
         ]
     )
-    np.testing.assert_array_equal(alice.share + bob.share, correct_outcome)
+    np.testing.assert_array_equal(alice.share + bob.share, correct_outcome)  # type: ignore[no-untyped-call]
 
 
 @pytest.mark.asyncio
@@ -139,21 +153,18 @@ async def test_protocol_mpyc() -> None:
     """
     player = Player("Test_player")
 
-    player._mpyc_data = cast(
-        "np.ndarray[FixedPoint]",  # type: ignore
-        np.array(
-            [
-                list(map(FixedPoint.fxp, dat))
-                for dat in [
-                    [1, 0, 5, 7],
-                    [1, 0, 4, 7],
-                    [0, 1, 3, 7],
-                    [0, 2, 2, 5],
-                    [1, 0, 2, 2],
-                    [1, 1, 1, 1],
-                ]
+    player._mpyc_data = np.array(
+        [
+            list(map(FixedPoint.fxp, dat))
+            for dat in [
+                [1, 0, 5, 7],
+                [1, 0, 4, 7],
+                [0, 1, 3, 7],
+                [0, 2, 2, 5],
+                [1, 0, 2, 2],
+                [1, 1, 1, 1],
             ]
-        ),
+        ]
     )
     player._mpyc_factors = np.array(
         [

@@ -9,4 +9,4 @@ from .data_owner import Alice as Alice
 from .data_owner import Bob as Bob
 from .helper import Helper as Helper
 
-__version__ = "0.1.3"
+__version__ = "0.2.0"

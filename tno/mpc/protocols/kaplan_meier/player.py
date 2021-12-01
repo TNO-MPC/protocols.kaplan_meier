@@ -10,6 +10,7 @@ from functools import reduce
 from typing import List, Optional, Sequence, Tuple, Type, Union
 
 import numpy as np
+import numpy.typing as npt
 from lifelines.statistics import StatisticalResult
 from mpyc.runtime import Party, mpc
 from mpyc.sectypes import SecureFixedPoint
@@ -79,9 +80,9 @@ class Player:
             format="%(asctime)s - %(name)s - " "%(levelname)s - %(message)s"
         )
 
-        self._mpyc_data: Optional[np.ndarray[FixedPoint]] = None  # type: ignore
+        self._mpyc_data: Optional[npt.NDArray[np.float64]] = None
         self._mpyc_shares: Optional[Sequence[Sequence[SecureFixedPoint]]] = None
-        self._mpyc_factors: Optional[np.ndarray[np.float64]] = None
+        self._mpyc_factors: Optional[npt.NDArray[np.float64]] = None
         self._mpyc_factors_shares: Optional[Sequence[Sequence[SecureFixedPoint]]] = None
         self.statistic: Optional[StatisticalResult] = None
 
@@ -281,8 +282,7 @@ class Player:
             return [
                 list(map(typer, dataframe[..., i])) for i in range(dataframe.shape[1])
             ]
-        else:
-            return [[typer(0)] * rows for _ in range(columns)]
+        return [[typer(0)] * rows for _ in range(columns)]
 
     async def _reshare_dataframes(
         self,
@@ -390,9 +390,9 @@ class Player:
             await mpc.barrier()
             chi_sec = mpc.in_prod(mpc.matrix_prod([devs], vars_inv)[0], devs)
         chi = await mpc.output(chi_sec)
-        p = chi2.sf(chi, len(at_risk_array) - 1)
+        p_value = chi2.sf(chi, len(at_risk_array) - 1)
         return StatisticalResult(
-            p_value=p,
+            p_value=p_value,
             test_statistic=chi,
             test_name="secure_multivariate_logrank_test",
             null_distribution="chi squared",

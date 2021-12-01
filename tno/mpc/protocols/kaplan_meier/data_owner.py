@@ -8,11 +8,11 @@ import asyncio
 from typing import Any, Optional, SupportsInt, Union, cast
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 
 from tno.mpc.communication import Pool
 from tno.mpc.encryption_schemes.paillier import Paillier, PaillierCiphertext
-from tno.mpc.encryption_schemes.utils.fixed_point import FixedPoint
 
 from .player import Player
 
@@ -72,7 +72,7 @@ class DataOwner(Player):
 
         :return: number of records
         """
-        return self.data.shape[0]
+        return self.data.shape[0]  # type: ignore[no-any-return]
 
     @property
     def groups(self) -> int:
@@ -85,7 +85,7 @@ class DataOwner(Player):
         raise NotImplementedError()
 
     @property
-    def data(self) -> Union[pd.DataFrame, np.ndarray[np.int32]]:
+    def data(self) -> Union[pd.DataFrame, npt.NDArray[np.int32]]:
         """
         The loaded dataset
 
@@ -115,7 +115,7 @@ class DataOwner(Player):
         """
         self.paillier_scheme.randomness.shut_down()
 
-    def encrypt(self, data: np.ndarray[np.float64]) -> np.ndarray[PaillierCiphertext]:  # type: ignore[type-var]
+    def encrypt(self, data: npt.NDArray[np.float64]) -> npt.NDArray[np.object_]:
         """
         Method to encrypt a dataset using the initialized Paillier scheme
 
@@ -123,11 +123,13 @@ class DataOwner(Player):
         :return: an encrypted dataset
         """
         self._logger.info("Encrypting data...")
-        encrypted_data: np.ndarray[PaillierCiphertext] = np.vectorize(self.paillier_scheme.encrypt)(data)  # type: ignore[attr-defined, type-var]
+        encrypted_data: npt.NDArray[np.object_] = np.vectorize(
+            self.paillier_scheme.encrypt
+        )(data)
         self._logger.info("Done encrypting data")
         return encrypted_data
 
-    def decrypt(self, data: np.ndarray[PaillierCiphertext]) -> np.ndarray[Any]:  # type: ignore[type-var]
+    def decrypt(self, data: npt.NDArray[np.object_]) -> npt.NDArray[np.float64]:
         """
         Method to decrypt a dataset using the initialized Paillier scheme
 
@@ -135,7 +137,9 @@ class DataOwner(Player):
         :return: a decrypted dataset
         """
         self._logger.info("Decrypting data...")
-        decrypted_data: np.ndarray[Any] = np.vectorize(self.paillier_scheme.decrypt)(data)  # type: ignore[attr-defined]
+        decrypted_data: npt.NDArray[np.float64] = np.vectorize(
+            self.paillier_scheme.decrypt
+        )(data)
         self._logger.info("Done decrypting data")
         return decrypted_data
 
@@ -145,23 +149,32 @@ class Alice(DataOwner):
     Alice player in the MPC protocol
     """
 
-    def __init__(self, *args: Any, nr_of_threads: int = 4, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *args: Any,
+        nr_of_threads: int = 4,
+        time_label: str = "time",
+        event_label: str = "event",
+        **kwargs: Any,
+    ) -> None:
         """
         Initializes player Alice
 
         :param nr_of_threads: the number of threads to use for randomness
             generation
+        :param time_label: the label used to represent the 'time' column in the data set
+        :param event_label: the label used to represent the 'event' column in the data set
         :param args: arguments to pass on to base class
         :param kwargs: keyword arguments to pass on to base class
         """
         super().__init__(*args, **kwargs)
         self.nr_of_threads = nr_of_threads
-        self._encrypted_group_data_: Optional[np.ndarray[PaillierCiphertext]] = None  # type: ignore[type-var] # pylint: disable=unsubscriptable-object
-        self._hidden_table: Optional[np.ndarray[PaillierCiphertext]] = None  # type: ignore[type-var] # pylint: disable=unsubscriptable-object
-        self._plain_table: Optional[
-            np.ndarray[np.int32]  # pylint: disable=unsubscriptable-object
-        ] = None
-        self._indices_events: pd.Series[bool] = pd.Series(None, dtype=bool)  # type: ignore[call-arg, type-var] # pylint: disable=unsubscriptable-object
+        self.time_label = time_label
+        self.event_label = event_label
+        self._encrypted_group_data_: Optional[npt.NDArray[np.object_]] = None
+        self._hidden_table: Optional[npt.NDArray[np.object_]] = None
+        self._plain_table: Optional[npt.NDArray[np.int32]] = None
+        self._indices_events: pd.Series = pd.Series(None, dtype=bool)
         self._mask_ht = None
         self._number_of_groups = None
 
@@ -185,7 +198,7 @@ class Alice(DataOwner):
 
         :return: number of rows in the hidden table
         """
-        return self.data["time"].loc[self.data["event"].astype(bool)].nunique()
+        return self.data[self.time_label].loc[self.data[self.event_label].astype(bool)].nunique()  # type: ignore[no-any-return]
 
     @property
     def cols_in_hidden_table(self) -> int:
@@ -199,7 +212,7 @@ class Alice(DataOwner):
         return 2 * self.groups
 
     @property
-    def _encrypted_group_data(self) -> np.ndarray[PaillierCiphertext]:  # type: ignore[type-var] # pylint: disable=unsubscriptable-object
+    def _encrypted_group_data(self) -> npt.NDArray[np.object_]:
         """
         Encrypted group data
 
@@ -211,11 +224,11 @@ class Alice(DataOwner):
         return self._encrypted_group_data_
 
     @_encrypted_group_data.setter
-    def _encrypted_group_data(self, data: np.ndarray[PaillierCiphertext]) -> None:  # type: ignore[type-var] # pylint: disable=unsubscriptable-object
+    def _encrypted_group_data(self, data: npt.NDArray[np.object_]) -> None:
         self._encrypted_group_data_ = data
 
     @property
-    def hidden_table(self) -> np.ndarray[PaillierCiphertext]:  # type: ignore[type-var] # pylint: disable=unsubscriptable-object
+    def hidden_table(self) -> npt.NDArray[np.object_]:
         """
         Hidden table
 
@@ -229,7 +242,7 @@ class Alice(DataOwner):
     @property
     def plain_table(
         self,
-    ) -> np.ndarray[np.int32]:  # pylint: disable=unsubscriptable-object
+    ) -> npt.NDArray[np.int32]:
         """
         Plain table
 
@@ -321,7 +334,7 @@ class Alice(DataOwner):
         if not isinstance(self.data, pd.DataFrame):
             raise AttributeError("Data is not a pandas dataframe")
         self._data = self.data.sort_values(
-            by=["time", "event"], ascending=[True, False]
+            by=[self.time_label, self.event_label], ascending=[True, False]
         )
         self._encrypted_group_data = self._encrypted_group_data[
             cast(slice, self.data.index)
@@ -331,7 +344,7 @@ class Alice(DataOwner):
         """
         Determine the indices of the events.
         """
-        self._indices_events = cast("pd.Series[bool]", self.data["event"] == 1)
+        self._indices_events = self.data[self.event_label] == 1
 
     def _remove_censored_and_duplicates(self) -> None:
         """
@@ -339,18 +352,18 @@ class Alice(DataOwner):
 
         :raise ValueError: raised when event indices are not determined
         """
-        diff: np.ndarray[np.int32] = np.diff(self.data[self._indices_events]["time"])  # type: ignore[arg-type, call-overload] # pylint: disable=unsubscriptable-object
-        add = (np.nonzero(diff)[0] + 1).astype(np.int32)
-        add = np.insert(add, 0, np.int32(0))
+        diff: npt.NDArray[np.int32] = np.diff(self.data[self._indices_events][self.time_label])  # type: ignore[no-untyped-call]
+        add = (np.nonzero(diff)[0] + 1).astype(np.int32)  # type: ignore[attr-defined]
+        add = np.insert(add, 0, np.int32(0))  # type: ignore[no-untyped-call]
 
-        grouped_data = np.c_[  # type: ignore[attr-defined]
+        grouped_data = np.c_[
             np.ones((self.data.shape[0], 1)), self._encrypted_group_data
         ]
 
         # Compute the result columns
         # Summing
         exposed_cols = grouped_data[::-1].cumsum(axis=0)[::-1]
-        type_cols = np.add.reduceat(grouped_data[self._indices_events], add)  # type: ignore[attr-defined]
+        type_cols = np.add.reduceat(grouped_data[self._indices_events], add)
         # Removing
         if self._indices_events is None:
             raise ValueError("Indices of events are not determined (yet).")
@@ -358,8 +371,8 @@ class Alice(DataOwner):
             self._indices_events & ~self.data["time"].duplicated(keep="first")
         ]
 
-        self._hidden_table = np.c_[type_cols[:, 1:], exposed_cols[:, 1:]]  # type: ignore[attr-defined]
-        self._plain_table = np.c_[type_cols[:, 0], exposed_cols[:, 0]]  # type: ignore[attr-defined]
+        self._hidden_table = np.c_[type_cols[:, 1:], exposed_cols[:, 1:]]
+        self._plain_table = np.c_[type_cols[:, 0], exposed_cols[:, 0]]
 
     def compute_factors(self) -> None:
         """Pre-computes several factors for in the computation of the log-
@@ -399,24 +412,26 @@ class Alice(DataOwner):
         var_ind = at_risk_total != 1
         var_factors[var_ind] /= at_risk_total[var_ind] - 1
         var_factors_2 = var_factors * at_risk_total
-        self._mpyc_factors = np.c_[dev_factors, var_factors, var_factors_2]  # type: ignore[attr-defined]
+        self._mpyc_factors = np.c_[dev_factors, var_factors, var_factors_2]
 
     def generate_share(self) -> None:
         """
         Generates additive secret shares.
         """
-        self._mpyc_data: np.ndarray[FixedPoint] = np.vectorize(lambda _: self.signed_randomness())(np.ndarray(self.hidden_table.shape))  # type: ignore[attr-defined, type-var] # pylint: disable=unsubscriptable-object
+        self._mpyc_data: npt.NDArray[np.float64] = np.vectorize(
+            lambda _: self.signed_randomness()
+        )(np.ndarray(self.hidden_table.shape))
         self._logger.info("Generated share")
 
     def mask_hidden_table(
         self,
-    ) -> np.ndarray[np.float64]:  # pylint: disable=unsubscriptable-object
+    ) -> npt.NDArray[np.float64]:
         """
         Masks the hidden table.
 
         :return: a masked hidden table
         """
-        return cast("np.ndarray[np.float64]", self.hidden_table - self.share)
+        return self.hidden_table - self.share
 
     async def send_share(self) -> None:
         """
@@ -448,7 +463,7 @@ class Alice(DataOwner):
         """
         Re-randomises the hidden table
         """
-        np.vectorize(self.re_randomize)(self.hidden_table)  # type: ignore[attr-defined]
+        np.vectorize(self.re_randomize)(self.hidden_table)
 
 
 class Bob(DataOwner):
@@ -473,8 +488,8 @@ class Bob(DataOwner):
         """
         super().__init__(*args, **kwargs)
         self._paillier_scheme = paillier_scheme
-        self.encrypted_data: Optional[np.ndarray[PaillierCiphertext]] = None  # type: ignore[type-var] # pylint: disable=unsubscriptable-object
-        self._hidden_table: Optional[np.ndarray[PaillierCiphertext]] = None  # type: ignore[type-var] # pylint: disable=unsubscriptable-object
+        self.encrypted_data: Optional[npt.NDArray[np.object_]] = None
+        self._hidden_table: Optional[npt.NDArray[np.object_]] = None
 
     @property
     def groups(self) -> int:
@@ -483,7 +498,7 @@ class Bob(DataOwner):
 
         :return: number of groups
         """
-        return self._data.shape[1]
+        return self.data.shape[1]  # type: ignore[no-any-return]
 
     async def start_protocol(self) -> None:
         """
@@ -528,12 +543,12 @@ class Bob(DataOwner):
         Receive additive secret share produced by party Alice.
         """
         encrypted_share = await self.receive_message(self.party_A, msg_id="share")
-        self._mpyc_data = cast(
-            "np.ndarray[FixedPoint]", await self.decrypt_share(encrypted_share)  # type: ignore[type-var]
-        )
+        self._mpyc_data = await self.decrypt_share(encrypted_share)
         self._mpyc_factors = np.zeros((len(self._mpyc_data), 3), dtype=np.float64)
 
-    async def decrypt_share(self, data: np.ndarray[PaillierCiphertext]) -> Any:  # type: ignore[type-var] # pylint: disable=unsubscriptable-object
+    async def decrypt_share(
+        self, data: npt.NDArray[np.object_]
+    ) -> npt.NDArray[np.float64]:
         """
         Decrypt share
 
