@@ -1,9 +1,9 @@
-from typing import List, Optional, Sequence, Union
+from __future__ import annotations
+
+from typing import Sequence
 
 class rv_continuous:
-    def __init__(
-        self, a: Optional[float] = None, name: Optional[str] = None
-    ) -> None: ...
+    def __init__(self, a: float | None = None, name: str | None = None) -> None: ...
     def sf(
-        self, x: Union[float, Sequence[float]], *args: int, **kwds: Optional[float]
-    ) -> List[float]: ...
+        self, x: float | Sequence[float], *args: int, **kwds: float | None
+    ) -> list[float]: ...

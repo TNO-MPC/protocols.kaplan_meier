@@ -23,8 +23,8 @@ class Helper(Player):
         """
         super().__init__(*args, **kwargs)
 
-    async def start_protocol(self) -> None:
+    async def run_protocol(self) -> None:
         """
         Starts and runs the protocol
         """
-        await self.run_mpyc()
+        await self.run_mpyc_logrank_test()

@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from functools import reduce
-from typing import List, Optional, Sequence, Tuple, Type, Union
+from typing import Sequence
 
 import numpy as np
 import numpy.typing as npt
@@ -26,11 +26,11 @@ class MPCProtocolMetadata:
     This class contains some metadata that relates to the part of the protocol that relies on the MPyC framework.
     """
 
-    data_parties: List[Party] = field(default_factory=list)
-    _secfxp: Optional[Type[SecureFixedPoint]] = None
+    data_parties: list[Party] = field(default_factory=list)
+    _secfxp: type[SecureFixedPoint] | None = None
 
     @property
-    def secfxp(self) -> Type[SecureFixedPoint]:
+    def secfxp(self) -> type[SecureFixedPoint]:
         """Type of SecureFixedPoint that we use throughout the protocol
 
         :return: SecureFixedPoint object
@@ -41,7 +41,7 @@ class MPCProtocolMetadata:
         return self._secfxp
 
     @secfxp.setter
-    def secfxp(self, secfxp: Type[SecureFixedPoint]) -> None:
+    def secfxp(self, secfxp: type[SecureFixedPoint]) -> None:
         """Set the SecureFixedPoint object.
 
         :param secfxp: SecureFixedPoint object
@@ -57,9 +57,9 @@ class Player:
     def __init__(
         self,
         identifier: str,
-        party_A: str = "Alice",
-        party_B: str = "Bob",
-        helper: str = "Helper",
+        party_A: str = "alice",
+        party_B: str = "bob",
+        helper: str = "helper",
     ) -> None:
         """
         Initializes player
@@ -80,13 +80,17 @@ class Player:
             format="%(asctime)s - %(name)s - " "%(levelname)s - %(message)s"
         )
 
-        self._mpyc_data: Optional[npt.NDArray[np.float64]] = None
-        self._mpyc_shares: Optional[Sequence[Sequence[SecureFixedPoint]]] = None
-        self._mpyc_factors: Optional[npt.NDArray[np.float64]] = None
-        self._mpyc_factors_shares: Optional[Sequence[Sequence[SecureFixedPoint]]] = None
-        self.statistic: Optional[StatisticalResult] = None
+        self._additive_share: npt.NDArray[np.int_] | None = None
+        self._mpyc_minimal_statistics: None | (Sequence[Sequence[SecureFixedPoint]]) = (
+            None
+        )
+        self._logrank_computation_factors: npt.NDArray[np.float_] | None = None
+        self._mpyc_logrank_computation_factors: None | (
+            Sequence[Sequence[SecureFixedPoint]]
+        ) = None
+        self.statistic: StatisticalResult | None = None
 
-    async def start_protocol(self) -> None:
+    async def run_protocol(self) -> None:
         """
         Starts and runs the protocol
 
@@ -97,7 +101,7 @@ class Player:
         )
 
     @property
-    def share(self) -> np.ndarray[FixedPoint]:  # type: ignore
+    def additive_share(self) -> np.ndarray[FixedPoint]:  # type: ignore
         """
         Additive share used as an input for the Shamir secret sharing part of
         the protocol.
@@ -105,12 +109,12 @@ class Player:
         :return: additive share
         :raise ValueError: raised when sharing is not set
         """
-        if self._mpyc_data is None:
-            raise ValueError("There is no share available")
-        return self._mpyc_data
+        if self._additive_share is None:
+            raise ValueError("There is no additive share available")
+        return self._additive_share
 
     @property
-    def data_parties(self) -> Tuple[str, str]:
+    def data_parties(self) -> tuple[str, str]:
         """
         The identifiers of data parties involved in the protocol
 
@@ -154,7 +158,7 @@ class Player:
         """
         return self._helper
 
-    async def run_mpyc(self) -> None:
+    async def run_mpyc_logrank_test(self) -> None:
         """
         Runs the Shamir secret sharing part of the protocol using the MPyC
         framework
@@ -162,25 +166,27 @@ class Player:
         async with mpc:
             assert len(mpc.parties) == 3, "Number of parties should be 3"
             await self._start_mpyc()
-            await self.obtain_secret_sharings()
+            await self.obtain_secret_shared_logrank_input()
             await self.secure_multivariate_log_rank_test()
 
-    async def obtain_secret_sharings(self) -> None:
+    async def obtain_secret_shared_logrank_input(self) -> None:
         """
         Method to obtain Shamir secret sharings of the results of the
         homomorphic encryption part of the protocol.
         """
-        await self.obtain_secret_sharing_additively_shared_database()
-        await self.obtain_secret_sharing_factors()
+        await self._obtain_mpyc_minimal_statistics()
+        await self._obtain_mpyc_logrank_factors()
 
-    async def obtain_secret_sharing_additively_shared_database(self) -> None:
+    async def _obtain_mpyc_minimal_statistics(self) -> None:
         """
         Method to obtain Shamir secret sharings of the additively shared results
         of the homomorphic encryption part of the protocol.
         """
-        self._mpyc_shares = await self._reshare_dataframes(self._mpyc_data, typer=int)
+        self._mpyc_minimal_statistics = await self._reshare_dataframes(
+            self._additive_share, typer=int
+        )
 
-    async def obtain_secret_sharing_factors(self) -> None:
+    async def _obtain_mpyc_logrank_factors(self) -> None:
         """
         Method to obtain Shamir secret sharings of factors needed in the
         secure computation of the log-rank statistic.
@@ -188,8 +194,8 @@ class Player:
         These factors are pre-computed by Alice, leveraging her locally
         available information.
         """
-        self._mpyc_factors_shares = await self._reshare_dataframes(
-            self._mpyc_factors, typer=float
+        self._mpyc_logrank_computation_factors = await self._reshare_dataframes(
+            self._logrank_computation_factors, typer=float
         )
 
     async def secure_multivariate_log_rank_test(self) -> None:
@@ -199,15 +205,26 @@ class Player:
         :raise ValueError: raised when there are no shares available yet
         """
         self._logger.info("Computing log-rank statistics...")
-        if self._mpyc_factors_shares is None or self._mpyc_shares is None:
+        if (
+            self._mpyc_logrank_computation_factors is None
+            or self._mpyc_minimal_statistics is None
+        ):
             raise ValueError("Some shares are missing")
-        dev_factors = self._mpyc_factors_shares[0]
-        var_factors = self._mpyc_factors_shares[1]
-        var_factors_2 = self._mpyc_factors_shares[2]
-        deaths_array = self._mpyc_shares[: len(self._mpyc_shares) // 2]
-        at_risk_array = self._mpyc_shares[len(self._mpyc_shares) // 2 :]
+        expectation_factors = self._mpyc_logrank_computation_factors[0]
+        variance_factors = self._mpyc_logrank_computation_factors[1]
+        variance_factors_2 = self._mpyc_logrank_computation_factors[2]
+        events_per_group = self._mpyc_minimal_statistics[
+            : len(self._mpyc_minimal_statistics) // 2
+        ]
+        at_risk_per_group = self._mpyc_minimal_statistics[
+            len(self._mpyc_minimal_statistics) // 2 :
+        ]
         self.statistic = await self._secure_multivariate_logrank_test(
-            dev_factors, var_factors, var_factors_2, deaths_array, at_risk_array
+            expectation_factors,
+            variance_factors,
+            variance_factors_2,
+            events_per_group,
+            at_risk_per_group,
         )
         self._logger.info("Done computing log-rank statistics")
 
@@ -225,8 +242,8 @@ class Player:
         )
 
     async def _request_format_data(
-        self, dataframe: Optional[Union[np.ndarray[FixedPoint], np.ndarray[np.float64]]]  # type: ignore
-    ) -> Tuple[int, int]:
+        self, dataframe: npt.NDArray[FixedPoint] | npt.NDArray[np.int_] | npt.NDArray[np.float_] | None  # type: ignore
+    ) -> tuple[int, int]:
         """
         Method to determine the data format of the dataframe.
         The first data owner determines the data format (rows x cols).
@@ -254,9 +271,9 @@ class Player:
 
     async def _extract_and_convert_data_cols_from_np(
         self,
-        dataframe: Optional[Union[np.ndarray[FixedPoint], np.ndarray[np.float64]]],  # type: ignore
+        dataframe: np.ndarray[FixedPoint] | np.ndarray[np.float_] | None,  # type: ignore
         typer: type,
-    ) -> List[List[Union[int, float]]]:
+    ) -> list[list[int | float]]:
         """
         Extract the columns of a numpy dataframe and return them in a list.
         The elements of the returned lists are converted to type typer.
@@ -286,9 +303,14 @@ class Player:
 
     async def _reshare_dataframes(
         self,
-        dataframe: Optional[Union[np.ndarray[FixedPoint], np.ndarray[np.float64]]],  # type: ignore
+        dataframe: (
+            None
+            | npt.NDArray[FixedPoint]
+            | npt.NDArray[np.int_]
+            | npt.NDArray[np.float_]
+        ),
         typer: type = float,
-    ) -> List[List[SecureFixedPoint]]:
+    ) -> list[list[SecureFixedPoint]]:
         """
         Re-share (in MPyC) the additively-shared inputs of the
         dataframe that is additively shared over the data owners.
@@ -316,30 +338,30 @@ class Player:
 
     async def _secure_multivariate_logrank_test(
         self,
-        dev_factors: Sequence[SecureFixedPoint],
-        var_factors: Sequence[SecureFixedPoint],
-        var_factors_2: Sequence[SecureFixedPoint],
-        deaths_array: Sequence[Sequence[SecureFixedPoint]],
-        at_risk_array: Sequence[Sequence[SecureFixedPoint]],
+        expectation_factors: Sequence[SecureFixedPoint],
+        variance_factors: Sequence[SecureFixedPoint],
+        variance_factors_2: Sequence[SecureFixedPoint],
+        events_per_group: Sequence[Sequence[SecureFixedPoint]],
+        at_risk_per_group: Sequence[Sequence[SecureFixedPoint]],
     ) -> StatisticalResult:
         """
         Computes the logrank statistics for the given input.
 
-        :param dev_factors: The j-th element of this list indicates
+        :param expectation_factors: The j-th element of this list indicates
             the quantity (total number of deaths) / (total number of
             patients at risk) at the j-th distinct event time.
-        :param var_factors: The j-th element of this list indicates
+        :param variance_factors: The j-th element of this list indicates
             the quantity (total number of deaths) * (total number at risk -
             total number of deaths) / (total number at risk ** 2 *
             (total number at risk - 1)) at the j-th distinct event time.
-        :param var_factors_2: The j-th element of this list indicates
+        :param variance_factors_2: The j-th element of this list indicates
             the quantity var_factors * (total number at risk) at the j-th
             distinct event time.
-        :param deaths_array: list that contains one list per patient
+        :param events_per_group: list that contains one list per patient
             category. The j-th element of the i-th list indicates the
-            number of patients in category i that died at the j-th distinct
+            number of observed events in category i at the j-th distinct
             event time.
-        :param at_risk_array: list that contains one list per patient
+        :param at_risk_per_group: list that contains one list per patient
             category. The j-th element of the i-th list indicates the
             number of patients in category i that are at risk at the j-th
             distinct event time.
@@ -348,53 +370,61 @@ class Player:
         """
         if self.mpc_metadata.secfxp is None:
             raise ValueError("SecFxp is not configured (yet).")
-        nr_groups = len(at_risk_array)
+        nr_groups = len(at_risk_per_group) + 1
         nr_comparisons = nr_groups - 1
         secfxp = self.mpc_metadata.secfxp
-        devs: List[SecureFixedPoint] = [secfxp(None)] * nr_comparisons
-        pre_vars: List[List[SecureFixedPoint]] = [
-            [secfxp(None)] * len(at_risk_array[0]) for _ in range(nr_comparisons)
+        deviation: list[SecureFixedPoint] = [secfxp(None)] * nr_comparisons
+        pre_variance: list[list[SecureFixedPoint]] = [
+            [secfxp(None)] * len(at_risk_per_group[0]) for _ in range(nr_comparisons)
         ]
-        neg_pre_vars: List[List[SecureFixedPoint]] = [
-            [secfxp(None)] * len(at_risk_array[0]) for _ in range(nr_comparisons)
+        neg_pre_variance: list[list[SecureFixedPoint]] = [
+            [secfxp(None)] * len(at_risk_per_group[0]) for _ in range(nr_comparisons)
         ]
-        var_matrix: List[List[SecureFixedPoint]] = [
+        variance: list[list[SecureFixedPoint]] = [
             [secfxp(None)] * nr_comparisons for _ in range(nr_comparisons)
         ]
 
         for i in range(nr_comparisons):
-            pre_vars[i] = mpc.schur_prod(var_factors, at_risk_array[i])
-            neg_pre_vars[i] = [-x for x in pre_vars[i]]
+            pre_variance[i] = mpc.schur_prod(variance_factors, at_risk_per_group[i])
+            neg_pre_variance[i] = [-x for x in pre_variance[i]]
 
-        for i, (deaths, at_risk) in enumerate(zip(deaths_array, at_risk_array)):
-            if i == nr_comparisons:
-                break
+        for i, (observations, at_risk) in enumerate(
+            zip(events_per_group, at_risk_per_group)
+        ):
             # Compute deviations from expected number of deaths
-            devs[i] = mpc.sum(
-                mpc.vector_sub(deaths, mpc.schur_prod(dev_factors, at_risk))
+            deviation[i] = mpc.sum(
+                mpc.vector_sub(
+                    observations, mpc.schur_prod(expectation_factors, at_risk)
+                )
             )
 
             # Compute variances
-            var_matrix[i][i] = mpc.sum(
-                mpc.schur_prod(mpc.vector_sub(var_factors_2, pre_vars[i]), at_risk)
+            variance[i][i] = mpc.sum(
+                mpc.schur_prod(
+                    mpc.vector_sub(variance_factors_2, pre_variance[i]), at_risk
+                )
             )
-            for j in (jj for jj in range(nr_comparisons) if jj != i):
-                var_matrix[i][j] = mpc.sum(mpc.schur_prod(neg_pre_vars[j], at_risk))
+            for j in range(i + 1, nr_comparisons):
+                variance[i][j] = variance[j][i] = mpc.sum(
+                    mpc.schur_prod(neg_pre_variance[j], at_risk)
+                )
 
         # Compute chi-value
         if nr_groups == 2:
-            chi_sec = devs[0] ** 2 / var_matrix[0][0]
+            chi_sec = deviation[0] ** 2 / variance[0][0]
         else:
             await mpc.barrier()
-            vars_inv = matrix_inverse(var_matrix)
+            inverse_variance = matrix_inverse(variance)
             await mpc.barrier()
-            chi_sec = mpc.in_prod(mpc.matrix_prod([devs], vars_inv)[0], devs)
+            chi_sec = mpc.in_prod(
+                mpc.matrix_prod([deviation], inverse_variance)[0], deviation
+            )
         chi = await mpc.output(chi_sec)
-        p_value = chi2.sf(chi, len(at_risk_array) - 1)
+        p_value = chi2.sf(chi, nr_groups - 1)
         return StatisticalResult(
             p_value=p_value,
             test_statistic=chi,
             test_name="secure_multivariate_logrank_test",
             null_distribution="chi squared",
-            degrees_of_freedom=len(at_risk_array) - 1,
+            degrees_of_freedom=nr_groups - 1,
         )

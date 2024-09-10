@@ -2,12 +2,17 @@
 Tests that can be ran using pytest to test the kaplan-meier functionality
 """
 
+from __future__ import annotations
+
 import asyncio
-from typing import AsyncGenerator, Tuple
+from typing import AsyncGenerator
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import pytest
+import pytest_asyncio
+from mpyc.runtime import mpc
 
 from tno.mpc.communication import Pool
 from tno.mpc.communication.test.pool_fixtures_http import (
@@ -15,13 +20,13 @@ from tno.mpc.communication.test.pool_fixtures_http import (
     generate_http_test_pools,
 )
 from tno.mpc.encryption_schemes.utils.fixed_point import FixedPoint
+
 from tno.mpc.protocols.kaplan_meier import Alice, Bob
 from tno.mpc.protocols.kaplan_meier.player import Player
 
 
-@pytest.fixture(name="pool_http_2p", scope="function")
-@pytest.mark.asyncio
-async def fixture_pool_http_2p() -> AsyncGenerator[Tuple[Pool, ...], None]:
+@pytest_asyncio.fixture(name="pool_http_2p", scope="function")
+async def fixture_pool_http_2p() -> AsyncGenerator[tuple[Pool, ...]]:
     """
     Creates a collection of 2 communication pools
 
@@ -32,16 +37,15 @@ async def fixture_pool_http_2p() -> AsyncGenerator[Tuple[Pool, ...], None]:
     await finish(pools)
 
 
-@pytest.fixture(name="alice")
-@pytest.mark.asyncio
-async def fixture_alice(pool_http_2p: Tuple[Pool, Pool]) -> Alice:
+@pytest_asyncio.fixture(name="alice")
+async def fixture_alice(pool_http_2p: tuple[Pool, Pool]) -> Alice:
     """
     Fixture that creates an instance of player Alice, initialized with test data
 
     :param pool_http_2p: communication pools
     :return: an instance of Alice
     """
-    test_data = pd.DataFrame(
+    test_data = pd.DataFrame(  # type: ignore[attr-defined]
         {
             "time": [3, 5, 6, 8, 10, 14, 14, 18, 20, 22, 30, 30],
             "event": [1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1],
@@ -56,16 +60,15 @@ async def fixture_alice(pool_http_2p: Tuple[Pool, Pool]) -> Alice:
     )
 
 
-@pytest.fixture(name="bob")
-@pytest.mark.asyncio
-async def fixture_bob(pool_http_2p: Tuple[Pool, Pool]) -> Bob:
+@pytest_asyncio.fixture(name="bob")
+async def fixture_bob(pool_http_2p: tuple[Pool, Pool]) -> Bob:
     """
     Fixture that creates an instance of player Bob, initialized with test data
 
     :param pool_http_2p: communication pools
     :return: an instance of Bob
     """
-    test_data = pd.DataFrame(
+    test_data = pd.DataFrame(  # type: ignore[attr-defined]
         {
             "Group A": [1, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0],
             "Group B": [0, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1],
@@ -92,13 +95,15 @@ async def alice_protocol_paillier(alice: Alice) -> None:
             alice.receive_number_of_groups(),
         ]
     )
-    alice.start_randomness_generation()
+    alice.start_randomness_generation(
+        amount=alice.nr_unique_event_times * 2 * (alice.nr_groups - 1)
+    )
     await alice.receive_encrypted_group_data()
-    alice.compute_hidden_table()
-    alice.compute_factors()
-    alice.re_randomise_ht()
-    alice.generate_share()
-    await alice.send_share()
+    alice.compute_kaplan_meier_minimal_statistics()
+    alice.compute_logrank_factors()
+    alice.generate_additive_share()
+    await alice.send_additive_share()
+    alice.shut_down_paillier()
 
 
 async def bob_protocol_paillier(bob: Bob) -> None:
@@ -107,15 +112,16 @@ async def bob_protocol_paillier(bob: Bob) -> None:
 
     :param bob: the player that will perform the protocol steps
     """
-    await bob.send_number_of_groups()
+    bob.start_randomness_generation(amount=bob.data.shape[0] * (bob.nr_groups - 1))
     loop = asyncio.get_event_loop()
     _, _, bob.encrypted_data = await asyncio.gather(
         bob.send_paillier_scheme(),
         bob.send_number_of_groups(),
-        loop.run_in_executor(None, bob.encrypt, bob.data),
+        loop.run_in_executor(None, bob.encrypt, bob.data.iloc[:, :-1]),
     )
-    await bob.send_encrypted_data()
-    await bob.receive_share()
+    await bob.send_encrypted_group_data()
+    # Alice and Bob share a Paillier scheme. Alice uses it last, so she gets to shut it down.
+    await bob.receive_additive_share()
 
 
 @pytest.mark.asyncio
@@ -133,17 +139,19 @@ async def test_protocol_paillier(alice: Alice, bob: Bob) -> None:
         ]
     )
 
-    correct_outcome = np.array(
+    correct_outcome: npt.NDArray[np.int_] = np.array(
         [
-            [1, 0, 5, 7],
-            [1, 0, 4, 7],
-            [0, 1, 3, 7],
-            [0, 2, 2, 5],
-            [1, 0, 2, 2],
-            [1, 1, 1, 1],
+            [1, 5],
+            [1, 4],
+            [0, 3],
+            [0, 2],
+            [1, 2],
+            [1, 1],
         ]
     )
-    np.testing.assert_array_equal(alice.share + bob.share, correct_outcome)  # type: ignore[no-untyped-call]
+    np.testing.assert_array_equal(
+        alice.additive_share + bob.additive_share, correct_outcome
+    )
 
 
 @pytest.mark.asyncio
@@ -153,20 +161,20 @@ async def test_protocol_mpyc() -> None:
     """
     player = Player("Test_player")
 
-    player._mpyc_data = np.array(
+    player._additive_share = np.array(
         [
             list(map(FixedPoint.fxp, dat))
             for dat in [
-                [1, 0, 5, 7],
-                [1, 0, 4, 7],
-                [0, 1, 3, 7],
-                [0, 2, 2, 5],
-                [1, 0, 2, 2],
-                [1, 1, 1, 1],
+                [1, 5],
+                [1, 4],
+                [0, 3],
+                [0, 2],
+                [1, 2],
+                [1, 1],
             ]
         ]
     )
-    player._mpyc_factors = np.array(
+    player._logrank_computation_factors = np.array(
         [
             [0.08333333333333333, 0.006944444444444445, 0.08333333333333334],
             [0.09090909090909091, 0.008264462809917356, 0.09090909090909091],
@@ -176,11 +184,10 @@ async def test_protocol_mpyc() -> None:
             [1.0, 0.0, 0.0],
         ]
     )
-    from mpyc.runtime import mpc
 
     async with mpc:
         await player._start_mpyc()
-        await player.obtain_secret_sharings()
+        await player.obtain_secret_shared_logrank_input()
         await player.secure_multivariate_log_rank_test()
     assert player.statistic is not None
     assert player.statistic.test_statistic == pytest.approx(0.5645388)

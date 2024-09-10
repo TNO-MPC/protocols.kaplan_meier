@@ -2,22 +2,21 @@ cff-version: 1.2.0
 license: Apache-2.0
 message: If you use this software, please cite it using these metadata.
 authors:
-      - name: TNO MPC Lab
-        city: The Hague
-        country: NL
-        email: mpclab@tno.nl
-        website: https://mpc.tno.nl
+  - name: TNO PET Lab
+    city: The Hague
+    country: NL
+    email: petlab@tno.nl
+    website: https://pet.tno.nl
 type: software
-url: https://mpc.tno.nl
+url: https://pet.tno.nl
 contact:
-      - name: TNO MPC Lab
-        city: The Hague
-        country: NL
-        email: mpclab@tno.nl
-        website: https://mpc.tno.nl
+  - name: TNO PET Lab
+    city: The Hague
+    country: NL
+    email: petlab@tno.nl
+    website: https://pet.tno.nl
 repository-code: https://github.com/TNO-MPC/protocols.kaplan_meier
 repository-artifact: https://pypi.org/project/tno.mpc.protocols.kaplan_meier
-title: TNO MPC Lab - Protocols - Kaplan-Meier
-version: v0.2.0
-date-released: 2021-12-01
-
+title: TNO PET Lab - secure Multi-Party Computation (MPC) - Protocols - Kaplan Meier
+version: 1.0.4
+date-released: 2024-11-29
